@@ -153,6 +153,16 @@ while True:
     else:
         break
 
+# Fetch custom emojis from instance
+try:
+    req = requests.get(url + "/emojis")
+    req.raise_for_status()
+except requests.exceptions.HTTPError as err:
+    print("Couldn't get custom emojis!\n" + str(err))
+    sys.exit(1)
+emoji_list = req.json()
+
+
 if len(noteList) == 0:
     print("Nothing to count, exiting script.")
     sys.exit(1)
@@ -174,7 +184,7 @@ for element in noteList:
         continue
 
     # Process and count custom Emojis
-    emojis = element["emojis"]
+    emojis = emoji_list["emojis"]
 
     if emojis is not None:
         for emoji in emojis:
@@ -319,11 +329,13 @@ if emojisTotal > 0:
     for element in emojiList:
         count = element["count"]
         emoji = element["emoji"]
-        emoji_text += f"{count}x {emoji} " + chr(9553) + " "
+        # Don't include emojis that were never used
+        if count > 0:
+            emoji_text += f"{count}x {emoji} " + chr(9553) + " "
 
 else:
     emoji_text = nickname + " has written " + str(len(noteList)) + " Notes yesterday, " + formerDate.strftime(
-        '%a %d-%m-%Y') + "\nand didn't used any emojis." + chr(8203) + chr(8203) + chr(8203)
+        '%a %d-%m-%Y') + "\nand didn't use any emojis." + chr(8203) + chr(8203) + chr(8203)
 
 text += emoji_text + reactText
 text = emojilib.emojize(text)
