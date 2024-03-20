@@ -46,7 +46,7 @@ There are two flags that can be used to specify which external files the script 
 | token          | `String`   | The token for your bot. Needs permission to write notes                                                                                                           |
 | getReaction    | `Boolean`  | Should reactions emojis be counted as well? `True` or `False`                                                                                                     |
 | ignoreEmojis   | `Boolean`  | Should Emojis that are specified in `ignoredemojis.txt` be ignored? `True`or `False`                                                                              |                                                        |
-| noteVisibility | `String`   | How should the note be shown in the Timeline? `public`: Visible for everyone<br/>`folowers`: only visible for your followers<br/>`specified`: Only you can see it |
+| noteVisibility | `String`   | How should the note be shown in the Timeline?<br/>`public`: Visible for everyone<br/>`home`: Visible on Home timeline<br/>`folowers`: only visible for your followers<br/>`specified`: Only you can see it |
 
 ### Other notes
 The script is written in a way that only the notes and reactions from yesterday(!!!) are caught and counted. There is no option currently to specify the date range for collection.
