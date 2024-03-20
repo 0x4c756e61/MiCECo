@@ -11,7 +11,7 @@ All notes will be send with a content warning note, because some clients can't h
 *Example Note (with counting of Reactions activated)*: https://ente.fun/notes/8wexz5ov1q
 
 ### Installation
-Clone the repository into a folder of your choice with `git clone https://github.com/fotoente/MiCECo.git`
+Clone the repository into a folder of your choice with `git clone https://github.com/vel-schmusis/MiCECo.git`
 Edit the file `example-miceco.cfg` (see table below) and save it as `miceco.cfg`
 
 Install following Python packages via `pip install`
