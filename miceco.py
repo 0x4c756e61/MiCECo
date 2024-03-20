@@ -268,7 +268,8 @@ if getReactions:
             sys.exit(1)
 
         for jsonObj in req.json():
-            # textDict = jsonObj
+            if reactionList and reactionList[-1] == jsonObj:
+                continue  # Ignore duplicate posts, I don't know why this happens, I guess Sharkey is woozy sometimes
             reactionList.append(jsonObj)
 
         formerTimestamp = lastTimestamp
