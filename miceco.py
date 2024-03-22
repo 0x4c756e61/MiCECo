@@ -5,7 +5,8 @@ import argparse
 from datetime import *
 import requests
 import emoji as emojilib
-
+from collections import Counter
+import json
 
 def check_str_to_bool(input_text) -> bool:
     if input_text == "True" or input_text == "true" or input_text == "TRUE":
@@ -23,7 +24,9 @@ emojiList = []
 emojisTotal = 0
 doubleList = []
 text = ""
+deafEarsText = ""
 getReactions = False
+getReaction_Received = False
 
 cwtext = "#miceco"
 
@@ -243,6 +246,7 @@ if ignoreEmojis:
             del emojiList[indx]
 
 doubleList = []
+hostList = []
 emojiList = sorted(emojiList, reverse=True, key=lambda d: d["count"])  # Sort it by the most used Emojis!
 
 reactionCount = 0
@@ -280,13 +284,17 @@ if getReactions:
             break
 
     react = ""
+    host = ""
     index = None
     reactionElement: dict
 
     for reactionElement in reactionList:
         react = reactionElement["type"]
         react = react.replace("@.", "")
-
+        # \u2764 is default (heart), only append if it's not the detault and not localhost
+        host = reactionElement["note"]["user"]["host"]
+        if react != "\u2764" and host != None:
+            hostList.append(host)
         if react not in doubleList:
             doubleList.append(react)
             emojiDict = {"reaction": react, "count": 0}
@@ -317,6 +325,53 @@ else:
 for count in emojiList:
     emojisTotal += count["count"]
 
+host_counter = Counter(hostList)
+deaf_ears = 0
+for element, count in host_counter.items():
+    try:
+        #print("Next query:")
+        #print(element)
+        # Get the URL from nodeinfo
+        nodeinfo_response = requests.get(f"https://{element}/.well-known/nodeinfo")
+        nodeinfo_data = nodeinfo_response.json()
+        last_href = nodeinfo_data["links"][-1]["href"]
+
+        # Execute GET request using the URL from nodeinfo
+        result_response = requests.get(last_href)
+        result_data = result_response.json()
+
+        # Check if 'reactions' is supported
+        if "reactions" in result_data:
+            pass
+            #print("Reaction support: True")
+        else:
+            # Get software name
+            software_name = result_data["software"]["name"]
+            #print(f"Software name: {software_name}")
+
+            # Check supported software
+            if software_name in ["sharkey", "misskey", "firefish", "akkoma", "pleroma", "foundkey"]:
+                pass
+                #print("Supported")
+            else:
+                # Check reaction support for Others
+                mastodon_instance_info_response = requests.get(f"https://{element}/api/v2/instance")
+                mastodon_instance_info_data = mastodon_instance_info_response.json()
+                if "reactions" in mastodon_instance_info_data:
+                    pass
+                    #print("Reaction support: True")
+                else:
+                    #print("No reaction support")
+                    deaf_ears += count
+    except Exception as e:
+        print(f"An error occurred: {e}")
+        print("If you see this error, please report it on github")
+        print("This happens when a host is not providing an easy way to know if they support emoji reactions")
+        print("Host which couldn't be queried:" + element)
+        print("miceco will assume that this instance supports emoji reactions since it's probably not mastodon")
+        continue
+
+
 initial_text = ""
 initial_react_text = ""
 
@@ -338,7 +393,12 @@ else:
     emoji_text = nickname + " has written " + str(len(noteList)) + " Notes yesterday, " + formerDate.strftime(
         '%a %d-%m-%Y') + "\nand didn't use any emojis." + chr(8203) + chr(8203) + chr(8203)
 
-text += emoji_text + reactText
+if deaf_ears > 0:
+    deafEarsText = "\n\nOf the " + str(reactionCount) + " reactions " + nickname + " sent, at least " + str(deaf_ears) + " went into the void (to Mastodon users) :schmuserkadser:"
+else:
+    deafEarsText = "\n\nLooks like all reactions actually got received"
+
+text += emoji_text + reactText + deafEarsText
 text = emojilib.emojize(text)
 # print(text)
 
@@ -377,3 +437,4 @@ try:
 except requests.exceptions.HTTPError as err:
     print("Couldn't create Posts! " + str(err))
     sys.exit(1)
+
