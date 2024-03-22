@@ -1,7 +1,8 @@
 # MiCECo
 **M**isskey **C**ustom **E**moji **Co**unter
 
-This fork includes changes that will allow miceco to run in Sharkey v2023.12.0
+This fork includes changes that will allow miceco to run in Sharkey > v2023.12.0 and probably other Misskey forks.
+Please let me know if you (un)successfully ran MiCECo on something other than Sharkey!
 
 ### Introduction
 This little script counts custom emojis and used reactions from the previous day and automaticaly creates a note on your Misskey account with an overview. There is also an option to include reaction emojis in the counts too.
