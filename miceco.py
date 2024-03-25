@@ -365,7 +365,7 @@ if getReaction_Received:
                 #print(f"Software name: {software_name}")
 
                 # Check supported software
-                if software_name not in ["sharkey", "misskey", "firefish", "akkoma", "pleroma", "foundkey"]:
+                if software_name not in ["sharkey", "misskey", "firefish", "akkoma", "pleroma", "foundkey", "iceshrimp"]:
                     # Check reaction support for Others
                     mastodon_instance_info_response = requests.get(f"https://{element}/api/v2/instance")
                     mastodon_instance_info_data = mastodon_instance_info_response.json()
