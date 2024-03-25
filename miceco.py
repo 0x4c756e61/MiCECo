@@ -431,10 +431,11 @@ if max_note_length < len(text):
 
 try:
     req = requests.post(url + "/notes/create", json={
-        "i": token,
         "visibility": noteVisibility,
         "text": text,
         "cw": cwtext
+    }, headers={
+        "Authorization": f"Bearer {token}"
     })
     req.raise_for_status()
 except requests.exceptions.HTTPError as err:
