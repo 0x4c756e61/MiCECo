@@ -13,6 +13,7 @@ All notes will be send with a content warning note, because some clients can't h
 #### Docker
 Clone the repository into a folder of your choice with `git clone https://github.com/vel-schmusis/MiCECo.git`
 Edit the file `example-miceco.cfg` (see table below) and save it as `miceco.cfg`
+Edit the file `docker-compose.yaml` and change `TZ=Europe/Berlin` to your local timezone
 
 Start the container with `docker compose up --build`.
 
