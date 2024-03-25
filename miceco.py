@@ -402,7 +402,7 @@ if getReaction_Received:
     if deaf_ears > 0:
         deafEarsText = "\n\nOf the " + str(reactionCount) + " reactions " + nickname + " sent, at least " + str(deaf_ears) + " went into the void (to Mastodon users) :("
     else:
-        deafEarsText = "\n\nLooks like all reactions actually got received"
+        deafEarsText = "\n\nLooks like all reactions actually got received!"
 
 text += emoji_text + reactText + deafEarsText
 text = emojilib.emojize(text)
