@@ -400,7 +400,7 @@ else:
         '%a %d-%m-%Y') + "\nand didn't use any emojis." + chr(8203) + chr(8203) + chr(8203)
 if getReaction_Received:
     if deaf_ears > 0:
-        deafEarsText = "\n\nOf the " + str(reactionCount) + " reactions " + nickname + " sent, at least " + str(deaf_ears) + " went into the void (to Mastodon users) :schmuserkadser:"
+        deafEarsText = "\n\nOf the " + str(reactionCount) + " reactions " + nickname + " sent, at least " + str(deaf_ears) + " went into the void (to Mastodon users) :("
     else:
         deafEarsText = "\n\nLooks like all reactions actually got received"
 
