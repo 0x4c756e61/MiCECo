@@ -278,7 +278,9 @@ if getReactions:
                 "userId": userid,
                 "sinceDate": seit,
                 "untilDate": lastTimestamp
-            })
+                }, headers={
+                    "Authorization": f"Bearer {token}"
+                })
             req.raise_for_status()
         except requests.exceptions.HTTPError as err:
             print("Couldn't get Posts! " + str(err))
