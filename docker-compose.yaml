@@ -1,0 +1,7 @@
+services:
+  miceco:
+    build: .
+    container_name: miceco
+    restart: no
+    volumes:
+      - ./miceco.cfg:/usr/src/app/miceco.cfg:ro
