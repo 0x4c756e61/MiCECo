@@ -2,6 +2,8 @@ services:
   miceco:
     build: .
     container_name: miceco
+    environment:
+      - TZ=Europe/Berlin
     restart: no
     volumes:
       - ./miceco.cfg:/usr/src/app/miceco.cfg:ro
