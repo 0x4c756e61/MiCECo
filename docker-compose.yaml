@@ -5,3 +5,4 @@ services:
     restart: no
     volumes:
       - ./miceco.cfg:/usr/src/app/miceco.cfg:ro
+      - ./ignoredemojis.txt:/usr/src/app/ignoredemojis.txt:ro
