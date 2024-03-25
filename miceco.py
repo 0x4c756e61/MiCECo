@@ -25,8 +25,10 @@ emojisTotal = 0
 doubleList = []
 text = ""
 deafEarsText = ""
-getReactions = False
+getReactions = True
 getReaction_Received = False
+withReplies = True
+getUTF8_emojis = False
 
 cwtext = "#miceco"
 
@@ -56,12 +58,27 @@ user = config.get("misskey", "user")
 try:
     getReactions = check_str_to_bool(config.get("misskey", "getReaction"))
 except (TypeError, ValueError, configparser.NoOptionError) as err:
-    getReactions = False
+    getReactions = True
 
 try:
     ignoreEmojis = check_str_to_bool(config.get("misskey", "ignoreEmojis"))
 except (TypeError, ValueError, configparser.NoOptionError) as err:
     ignoreEmojis = False
+
+try:
+    getReaction_Received = check_str_to_bool(config.get("misskey", "getReaction_Received"))
+except (TypeError, ValueError, configparser.NoOptionError) as err:
+    getReaction_Received = False
+
+try:
+    withReplies = check_str_to_bool(config.get("misskey", "withReplies"))
+except (TypeError, ValueError, configparser.NoOptionError) as err:
+    withReplies = True
+
+try:
+    getUTF8_emojis = check_str_to_bool(config.get("misskey", "getUTF8_emojis"))
+except (TypeError, ValueError, configparser.NoOptionError) as err:
+    getUTF8_emojis = False
 
 if ignoreEmojis:
     if args.ignored is None:
@@ -89,7 +106,7 @@ except configparser.NoOptionError as err:
     noteVisibility = "followers"
 
 try:
-    req = requests.post(url + "/users/show", json={"username": user, "host": None, "i": token})
+    req = requests.post(url + "/users/show", json={"username": user, "host": None})
     req.raise_for_status()
 except requests.exceptions.HTTPError as err:
     print("Couldn't get Username!\n" + str(err))
@@ -103,7 +120,7 @@ else:
 
 # Get max note length
 try:
-    req = requests.post(url + "/meta", json={"detail": True, "i": token})
+    req = requests.post(url + "/meta", json={"detail": True})
     req.raise_for_status()
 except requests.exceptions.HTTPError as err:
     print("Couldn't get maximal note length!\n" + str(err))
@@ -130,15 +147,13 @@ while True:
 
     try:
         req = requests.post(url + "/users/notes", json={
-            "i": token,
             "userId": userid,
             "sinceDate": seit,
             "untilDate": lastTimestamp,
-            "includeReplies": True,
+            "withReplies": withReplies,
             "limit": 100,
-            "includeMyRenotes": False,
-            "withFiles": False,
-            "excludeNsfw": False
+            "withRenotes": False,
+            "withFiles": False
         })
         req.raise_for_status()
     except requests.exceptions.HTTPError as err:
@@ -155,7 +170,6 @@ while True:
         lastTimestamp = int(datetime.timestamp(datetime.strptime(lastTime, '%Y-%m-%dT%H:%M:%S.%f%z')) * 1000)
     else:
         break
-
 # Fetch custom emojis from instance
 try:
     req = requests.get(url + "/emojis")
@@ -222,21 +236,21 @@ for element in noteList:
     if "poll" in element:
         for pollchoice in element["poll"]["choices"]:
             UTF8text += " " + pollchoice["text"]
+    if getUTF8_emojis:
+        UTF8ListRaw = emojilib.distinct_emoji_list(UTF8text)  # Find all UTF8 Emojis in Text and CW text
+        UTF8text = emojilib.demojize(UTF8text)
+        if len(UTF8ListRaw) > 0:
+            UTF8List = list(set(UTF8ListRaw))
+            for emoji in UTF8List:
+                emoji = emojilib.demojize(emoji)
+                if emoji not in doubleList:
+                    doubleList.append(emoji)  # Easy way to prevent a double emoji in the list without checking the whole
+                    # dictionary
+                    emojiDict = {"emoji": emoji, "count": 0}
+                    emojiList.append(emojiDict)
 
-    UTF8ListRaw = emojilib.distinct_emoji_list(UTF8text)  # Find all UTF8 Emojis in Text and CW text
-    UTF8text = emojilib.demojize(UTF8text)
-    if len(UTF8ListRaw) > 0:
-        UTF8List = list(set(UTF8ListRaw))
-        for emoji in UTF8List:
-            emoji = emojilib.demojize(emoji)
-            if emoji not in doubleList:
-                doubleList.append(emoji)  # Easy way to prevent a double emoji in the list without checking the whole
-                # dictionary
-                emojiDict = {"emoji": emoji, "count": 0}
-                emojiList.append(emojiDict)
-
-            index = doubleList.index(emoji)
-            emojiList[index]["count"] += UTF8text.count(emoji)
+                index = doubleList.index(emoji)
+                emojiList[index]["count"] += UTF8text.count(emoji)
 
 if ignoreEmojis:
     for ignoredEmoji in ignored_emojis:
@@ -261,7 +275,6 @@ if getReactions:
 
         try:
             req = requests.post(url + "/users/reactions", json={
-                "i": token,
                 "userId": userid,
                 "sinceDate": seit,
                 "untilDate": lastTimestamp
@@ -289,9 +302,11 @@ if getReactions:
     reactionElement: dict
 
     for reactionElement in reactionList:
+        #print(json.dumps(reactionElement))
+        # get note.user.host
+        # \u2764 is default (heart)
         react = reactionElement["type"]
         react = react.replace("@.", "")
-        # \u2764 is default (heart), only append if it's not the detault and not localhost
         host = reactionElement["note"]["user"]["host"]
         if react != "\u2764" and host != None:
             hostList.append(host)
@@ -327,49 +342,40 @@ for count in emojiList:
 
 host_counter = Counter(hostList)
 deaf_ears = 0
-for element, count in host_counter.items():
-    try:
-        #print("Next query:")
-        #print(element)
-        # Get the URL from nodeinfo
-        nodeinfo_response = requests.get(f"https://{element}/.well-known/nodeinfo")
-        nodeinfo_data = nodeinfo_response.json()
-        last_href = nodeinfo_data["links"][-1]["href"]
+if getReaction_Received:
+    for element, count in host_counter.items():
+        try:
+            #print("Next query:")
+            #print(element)
+            # Get the URL from nodeinfo
+            nodeinfo_response = requests.get(f"https://{element}/.well-known/nodeinfo")
+            nodeinfo_data = nodeinfo_response.json()
+            last_href = nodeinfo_data["links"][-1]["href"]
 
-        # Execute GET request using the URL from nodeinfo
-        result_response = requests.get(last_href)
-        result_data = result_response.json()
+            # Execute GET request using the URL from nodeinfo
+            result_response = requests.get(last_href)
+            result_data = result_response.json()
 
-        # Check if 'reactions' is supported
-        if "reactions" in result_data:
-            pass
-            #print("Reaction support: True")
-        else:
-            # Get software name
-            software_name = result_data["software"]["name"]
-            #print(f"Software name: {software_name}")
+            # Check if 'reactions' is supported
+            if "reactions" not in result_data:
+                # Get software name
+                software_name = result_data["software"]["name"]
+                #print(f"Software name: {software_name}")
 
-            # Check supported software
-            if software_name in ["sharkey", "misskey", "firefish", "akkoma", "pleroma", "foundkey"]:
-                pass
-                #print("Supported")
-            else:
-                # Check reaction support for Others
-                mastodon_instance_info_response = requests.get(f"https://{element}/api/v2/instance")
-                mastodon_instance_info_data = mastodon_instance_info_response.json()
-                if "reactions" in mastodon_instance_info_data:
-                    pass
-                    #print("Reaction support: True")
-                else:
-                    #print("No reaction support")
-                    deaf_ears += count
-    except Exception as e:
-        print(f"An error occurred: {e}")
-        print("If you see this error, please report it on github")
-        print("This happens when a host is not providing an easy way to know if they support emoji reactions")
-        print("Host which couldn't be queried:" + element)
-        print("miceco will assume that this instance supports emoji reactions since it's probably not mastodon")
-        continue
+                # Check supported software
+                if software_name not in ["sharkey", "misskey", "firefish", "akkoma", "pleroma", "foundkey"]:
+                    # Check reaction support for Others
+                    mastodon_instance_info_response = requests.get(f"https://{element}/api/v2/instance")
+                    mastodon_instance_info_data = mastodon_instance_info_response.json()
+                    if "reactions" not in mastodon_instance_info_data:
+                        deaf_ears += count
+        except Exception as e:
+            print(f"An error occurred: {e}")
+            print("If you see this error, please report it on github")
+            print("This happens when a host is not providing an easy way to know if they support emoji reactions")
+            print("Host which couldn't be queried:" + element)
+            print("miceco will assume that this instance supports emoji reactions since it's probably not mastodon")
+            continue
 
 
 initial_text = ""
@@ -392,11 +398,11 @@ if emojisTotal > 0:
 else:
     emoji_text = nickname + " has written " + str(len(noteList)) + " Notes yesterday, " + formerDate.strftime(
         '%a %d-%m-%Y') + "\nand didn't use any emojis." + chr(8203) + chr(8203) + chr(8203)
-
-if deaf_ears > 0:
-    deafEarsText = "\n\nOf the " + str(reactionCount) + " reactions " + nickname + " sent, at least " + str(deaf_ears) + " went into the void (to Mastodon users) :schmuserkadser:"
-else:
-    deafEarsText = "\n\nLooks like all reactions actually got received"
+if getReaction_Received:
+    if deaf_ears > 0:
+        deafEarsText = "\n\nOf the " + str(reactionCount) + " reactions " + nickname + " sent, at least " + str(deaf_ears) + " went into the void (to Mastodon users) :schmuserkadser:"
+    else:
+        deafEarsText = "\n\nLooks like all reactions actually got received"
 
 text += emoji_text + reactText + deafEarsText
 text = emojilib.emojize(text)
@@ -422,9 +428,6 @@ if max_note_length < len(text):
 
     text = emoji_text + reactText
     text = emojilib.emojize(text)
-
-# print(text)
-# noteVisibility = "specified"
 
 try:
     req = requests.post(url + "/notes/create", json={
