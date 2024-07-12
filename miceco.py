@@ -18,6 +18,9 @@ known_working_software = [
     "pleroma",
     "foundkey",
     "iceshrimp",
+    "cutiekey",
+    "magnetar",
+    "villkey"
 ]
 
 noteList = []
