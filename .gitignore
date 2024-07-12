@@ -1,3 +1,7 @@
 *.cfg
 !example-miceco.cfg
 venv/
+.venv
+.idea
+.ruff_cache
+__pycache__
