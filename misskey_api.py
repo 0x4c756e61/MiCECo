@@ -67,7 +67,7 @@ class Misskey:
         try:
             req = requests.get(self.api_url + "/emojis")
             req.raise_for_status()
-            return req.json()
+            return req.json()["emojis"]
 
         except HTTPError as err:
             print(f"Couldn't get custom emojis! {err}")
