@@ -126,7 +126,7 @@ if __name__ == "__main__":
     max_note_length = client.get_max_note_length()
 
     # fetch custom emojis
-    emoji_list = client.get_custom_emojis()
+    custom_emojis = client.get_custom_emojis()
 
     today              = dt.date.today()
     formerDate         = today - dt.timedelta(days=1)
@@ -159,86 +159,76 @@ if __name__ == "__main__":
         sys.exit(1)
 
     # processing
-    seen_emoji = [False for _ in range(len(emoji_list))]
+    emoji_count = {}
     for note in noteList:
         if note["text"] is None:
-            print(f"Skipped Note {note['id'] } without Text\nTime noted: element['createdAt']")
+            print(f"Skipped Note {note['id'] } without Text\nTime noted: {note['createdAt']}")
             continue
 
         if (note_is_miceco(note)):
             # Skip notes with three Zero-Width-Space in a
             # row (Marker to skip older MiCECo notes)
-            print(f"Skipped MiCECo Note {note['id'] }\nTime noted: element['createdAt']")
+            print(f"Skipped MiCECo Note {note['id'] }\nTime noted: {note['createdAt']}")
             continue
 
+        # Concat all note fields into one for easier parsing
+        note_content = note["text"]
+        if note["cw"] is not None:
+            note_content = note["text"] + " " + note["cw"]
+
+        if "poll" in note:
+            for pollchoice in note["poll"]["choices"]: note_content += " " + pollchoice["text"]
+
         # Process and count custom Emojis
-        if emoji_list is not None:
-            for i,emoji in enumerate(emoji_list):
-                # Only emojis from the own instance, because reactions will be in "emojis" too
-                if "@" in emoji["name"]:continue
+        if custom_emojis is not None:
+            for emoji in custom_emojis:
+                # Ignore remote emojis
+                if "@" in emoji["name"]: continue
+                stringified_emoji = f":{emoji['name']}:"
 
-                emojiname = f":{emoji['name']}:"
-                if not seen_emoji[i]:
-                    seen_emoji[i] = True
-                    emojiDict = {"emoji": emojiname, "count": 0}
-                    emojiList.append(emojiDict)
+                if ignoreEmojis and stringified_emoji in ignored_emojis:continue
 
+                emoji_occurences_in_note = note_content.count(stringified_emoji)
+                if emoji_occurences_in_note <=0:
+                    continue
 
-                # count the emojis in that note
-                emojiList[i]["count"] += note["text"].count(emojiList[i]["emoji"])
+                if stringified_emoji not in emoji_count:
+                    emoji_count[stringified_emoji] = emoji_occurences_in_note
+                    continue
 
-                if note["cw"] is not None:
-                    # Also count emojis inside the CW
-                    emojiList[i]["count"] += note["cw"].count(emojiList[i]["emoji"])
-
-                # Count custom emojis that are used in poll texts
-                if "poll" in note:
-                    for pollchoice in note["poll"]["choices"]:
-                        emojiList[i]["count"] += pollchoice["text"].count(emojiList[i]["emoji"])
+                emoji_count[stringified_emoji] += emoji_occurences_in_note
 
 
         # Process UTF8 Emojis
         # Find all UTF8 Emojis in Text and CW text
         if getUTF8_emojis:
-            # Concat all note fields into one for easier parsing
-            note_content = note["text"]
-            if note["cw"] is not None:
-                note_content = note["text"] + " " + note["cw"]
-
-            if "poll" in note:
-                for pollchoice in note["poll"]["choices"]: note_content += " " + pollchoice["text"]
 
             emojis_in_note = emojilib.distinct_emoji_list(note_content)
             note_content = emojilib.demojize(note_content)
-            emojis_in_note = list(set(emojis_in_note)) # Cool way to remove duplicates
 
             if len(emojis_in_note) > 0:
-                for i, emoji in enumerate(emojis_in_note):
-                    emoji = emojilib.demojize(emoji)
-                    # Again, really slow procedure, but here we do not really know all the emojis in advance
-                    # unless if we load all utf8 emojis which may be too heavy
-                    if emoji not in doubleList:
-                        # Easy way to prevent a double emoji in the list without checking the whole dictionary
-                        doubleList.append(emoji)
-                        emojiDict = {"emoji": emoji, "count": 0}
-                        emojiList.append(emojiDict)
+                for emoji in emojis_in_note:
+                    if ignoreEmojis and emoji in ignored_emojis:continue
+
+                    stringified_emoji = emojilib.demojize(emoji)
+
+                    emoji_occurences_in_note = note_content.count(stringified_emoji)
+                    if emoji_occurences_in_note <=0:
+                        continue
+
+                    if stringified_emoji not in emoji_count:
+                        emoji_count[stringified_emoji] = emoji_occurences_in_note
+                        continue
 
 
-                    emojiList[i]["count"] += note_content.count(emoji)
+                    emoji_count[stringified_emoji] += emoji_occurences_in_note
 
-    if ignoreEmojis:
-        for ignoredEmoji in ignored_emojis:
-            # TODO: Redo this, here we check the list 2 times, once with 'in' and another time with 'index'
-            if ignoredEmoji in doubleList:
-                indx = doubleList.index(ignoredEmoji)
-                del doubleList[indx]
-                del emojiList[indx]
 
     doubleList = []
     hostList = []
 
     # Sort it by the most used Emojis!
-    emojiList = sorted(emojiList, reverse=True, key=lambda d: d["count"])
+    emoji_count = {k: v for k, v in sorted(emoji_count.items(),reverse=True, key=lambda item: item[1])}
 
     reactionCount = 0
 
@@ -312,8 +302,8 @@ if __name__ == "__main__":
     else:
         reactText = ""
 
-    for count in emojiList:
-        emojisTotal += count["count"]
+    for key in emoji_count:
+        emojisTotal += emoji_count[key]
 
     host_counter = Counter(hostList)
     deaf_ears = 0
@@ -387,12 +377,8 @@ if __name__ == "__main__":
         text = initial_text
         emoji_text = ""
 
-        for note in emojiList:
-            count = note["count"]
-            emoji = note["emoji"]
-            # Don't include emojis that were never used
-            if count > 0:
-                emoji_text += f"{count}x {emoji} " + chr(9553) + " "
+        for emoji in emoji_count:
+            emoji_text += f"{emoji_count[emoji]}x {emoji} " + chr(9553) + " "
 
     else:
 
@@ -414,10 +400,8 @@ if __name__ == "__main__":
 
     if max_note_length < len(text):
         emoji_text = initial_text
-        for item in range(0, 5):
-            count = emojiList[item]["count"]
-            emoji = emojiList[item]["emoji"]
-            emoji_text += f"{count}x {emoji} " + chr(9553) + " "
+        for emoji in list(emoji_count.keys())[0:5]:
+            emoji_text += f"{emoji_count}x {emoji} " + chr(9553) + " "
         emoji_text += " and more..."
 
         if getReactions:
