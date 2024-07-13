@@ -19,6 +19,9 @@ known_working_software = [
     "pleroma",
     "foundkey",
     "iceshrimp",
+    "cutiekey",
+    "magnetar",
+    "villkey"
 ]
 
 # Globals yay!
@@ -37,6 +40,9 @@ getUTF8_emojis = False
 
 
 cwtext = "#miceco"
+user_agent = "MiCECo (github.com/vel_schmusis/MiCECo)"
+s = requests.Session()
+s.headers.update({"User-Agent": user_agent})
 
 def note_is_miceco(note) -> bool:
     return note["text"].find(chr(8203) + chr(8203) + chr(8203)) > 0
@@ -313,12 +319,13 @@ if __name__ == "__main__":
                 # print("Next query:")
                 # print(element)
                 # Get the URL from nodeinfo
-                nodeinfo_response = requests.get(f"https://{note}/.well-known/nodeinfo")
+                nodeinfo_response = s.get(f"https://{note}/.well-known/nodeinfo")
+
                 nodeinfo_data = nodeinfo_response.json()
                 last_href = nodeinfo_data["links"][-1]["href"]
 
                 # Execute GET request using the URL from nodeinfo
-                result_response = requests.get(last_href)
+                result_response = s.get(last_href)
                 result_data = result_response.json()
 
                 # Check if 'reactions' is supported
@@ -330,9 +337,10 @@ if __name__ == "__main__":
                     # Check supported software
                     if software_name not in known_working_software:
                         # Check reaction support for Others
-                        mastodon_instance_info_response = requests.get(
-                            f"https://{note}/api/v2/instance"
-                        )
+
+                        mastodon_instance_info_response = s.get(
+                            f"https://{note}/api/v2/instance")
+
                         mastodon_instance_info_data = mastodon_instance_info_response.json()
                         if "reactions" not in mastodon_instance_info_data:
                             deaf_ears += count
