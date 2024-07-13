@@ -38,6 +38,9 @@ withReplies = True
 getUTF8_emojis = False
 
 cwtext = "#miceco"
+user_agent = "MiCECo (github.com/vel_schmusis/MiCECo)"
+s = requests.Session()
+s.headers.update({"User-Agent": user_agent})
 
 def str_to_bool(input:str) -> bool:
     return input.lower() == "true"
@@ -319,12 +322,12 @@ if __name__ == "__main__":
                 # print("Next query:")
                 # print(element)
                 # Get the URL from nodeinfo
-                nodeinfo_response = requests.get(f"https://{element}/.well-known/nodeinfo")
+                nodeinfo_response = s.get(f"https://{element}/.well-known/nodeinfo")
                 nodeinfo_data = nodeinfo_response.json()
                 last_href = nodeinfo_data["links"][-1]["href"]
 
                 # Execute GET request using the URL from nodeinfo
-                result_response = requests.get(last_href)
+                result_response = s.get(last_href)
                 result_data = result_response.json()
 
                 # Check if 'reactions' is supported
@@ -336,7 +339,7 @@ if __name__ == "__main__":
                     # Check supported software
                     if software_name not in known_working_software:
                         # Check reaction support for Others
-                        mastodon_instance_info_response = requests.get(
+                        mastodon_instance_info_response = s.get(
                             f"https://{element}/api/v2/instance"
                         )
                         mastodon_instance_info_data = mastodon_instance_info_response.json()
