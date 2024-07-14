@@ -44,6 +44,7 @@ user_agent = "MiCECo (github.com/vel_schmusis/MiCECo)"
 s = requests.Session()
 s.headers.update({"User-Agent": user_agent})
 
+# TODO: Put signature at the start of the note's content, and check agains't the 3 first bytes
 def note_is_miceco(note) -> bool:
     return note["text"].find(chr(8203) + chr(8203) + chr(8203)) > 0
 
@@ -166,6 +167,9 @@ if __name__ == "__main__":
 
     # processing
     emoji_count = {}
+
+    start = dt.datetime.now()
+
     for note in noteList:
         if note["text"] is None:
             print(f"Skipped Note {note['id'] } without Text\nTime noted: {note['createdAt']}")
@@ -228,17 +232,23 @@ if __name__ == "__main__":
 
 
                     emoji_count[stringified_emoji] += emoji_occurences_in_note
-
+    end = dt.datetime.now()
+    print(f"Counting emojis took : {end-start}")
 
     doubleList = []
     hostList = []
 
     # Sort it by the most used Emojis!
+    start = dt.datetime.now()
     emoji_count = {k: v for k, v in sorted(emoji_count.items(),reverse=True, key=lambda item: item[1])}
+    end   = dt.datetime.now()
+    print(f"Sorting emojis took : {end-start}")
 
     reactionCount = 0
 
+
     if getReactions:
+        start = dt.datetime.now()
         lastTimestamp = bis
 
         while True:
@@ -305,6 +315,9 @@ if __name__ == "__main__":
                 reactText += f"{count}x {reaction} " + chr(9553) + " "
         else:
             reactText = "\n\nAnd didn't use any reactions."
+
+        end   = dt.datetime.now()
+        print(f"Counting reactions took : {end-start}")
     else:
         reactText = ""
 
