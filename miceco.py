@@ -25,7 +25,6 @@ known_working_software = [
 ]
 
 # Globals yay!
-reactionList = []
 reactList = []
 emojiList = []
 emojisTotal = 0
@@ -83,6 +82,30 @@ def get_yesterday_notes(bis:int, lastTimestamp:int, formerTimestamp:int) -> tupl
         )
 
     return (noteList, lastTimestamp, formerTimestamp)
+
+def get_yesterday_reactions(bis:int, lastTimestamp:int, formerTimestamp:int) -> tuple:
+    reactionsList = []
+    while True:
+        if (bis != lastTimestamp) and (formerTimestamp == lastTimestamp):
+            break
+
+        reactions = client.get_reactions(user_info, seit, lastTimestamp)
+
+        for jsonObj in reactions:
+            # Ignore duplicate posts, I don't know why this happens, I guess Sharkey is woozy sometimes
+            if reactionsList and reactionsList[-1] == jsonObj: continue
+            reactionsList.append(jsonObj)
+
+        formerTimestamp = lastTimestamp
+        if len(reactionsList) <= 0:
+            break
+
+        lastTime = reactionsList[-1]["createdAt"]
+        lastTimestamp = int(
+            dt.datetime.timestamp(dt.datetime.strptime(lastTime, "%Y-%m-%dT%H:%M:%S.%f%z")) * 1000
+        )
+    return (reactionsList, lastTimestamp, formerTimestamp)
+
 
 parser = argparse.ArgumentParser()
 parser.add_argument("-c", "--config", help="location of the configuration file")
@@ -232,6 +255,7 @@ if __name__ == "__main__":
 
 
                     emoji_count[stringified_emoji] += emoji_occurences_in_note
+
     end = dt.datetime.now()
     print(f"Counting emojis took : {end-start}")
 
@@ -246,32 +270,11 @@ if __name__ == "__main__":
 
     reactionCount = 0
 
-
     if getReactions:
         start = dt.datetime.now()
         lastTimestamp = bis
 
-        while True:
-            if (bis != lastTimestamp) and (formerTimestamp == lastTimestamp):
-                break
-
-
-            reactions = client.get_reactions(user_info, seit, lastTimestamp)
-
-            for jsonObj in reactions:
-                # Ignore duplicate posts, I don't know why this happens, I guess Sharkey is woozy sometimes
-                if reactionList and reactionList[-1] == jsonObj: continue
-                reactionList.append(jsonObj)
-
-            formerTimestamp = lastTimestamp
-            if len(reactionList) <= 0:
-                break
-
-            lastTime = reactionList[len(reactionList) - 1]["createdAt"]
-            lastTimestamp = int(
-                dt.datetime.timestamp(dt.datetime.strptime(lastTime, "%Y-%m-%dT%H:%M:%S.%f%z")) * 1000
-            )
-
+        reactionList, _, _ = get_yesterday_reactions(bis, lastTimestamp, formerTimestamp)
 
         react = ""
         host = ""
@@ -436,4 +439,6 @@ if __name__ == "__main__":
         text = emoji_text + reactText
         text = emojilib.emojize(text)
 
+    print(text)
+    input("Debug....")
     client.post_note(text, cwtext, noteVisibility) #pyright:ignore
