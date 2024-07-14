@@ -6,9 +6,11 @@ from collections import Counter
 import datetime as dt
 import emoji as emojilib
 import requests
-from requests.exceptions import HTTPError
+import math
 
+import logger as lg
 from misskey_api import NoteVisibility, Misskey
+
 
 # Edit that list to add new software
 known_working_software = [
@@ -52,7 +54,7 @@ def load_ignored_emojis() -> None:
     ignored_path = args.ignored or os.path.join(os.path.dirname(__file__), "ignoredemojis.txt")
 
     if not os.path.exists(ignored_path):
-        print("Config is set to ignore emojis but no file for ignored emojis was found!")
+        lg.err("Config is set to ignore emojis but no file for ignored emojis was found!")
         sys.exit(1)
 
     ignored_emojis = []
@@ -84,6 +86,17 @@ def get_yesterday_notes(bis:int, lastTimestamp:int, formerTimestamp:int) -> tupl
 
     return (noteList, lastTimestamp, formerTimestamp)
 
+def format_delta_time(start, end) -> str:
+    process_time = (end-start).total_seconds();
+    time_unit = "s"
+    if process_time < 0.5:
+        process_time *= 1000
+        time_unit = "ms"
+
+    process_time = round(process_time, 2)
+
+    return f"{process_time} {time_unit}"
+
 parser = argparse.ArgumentParser()
 parser.add_argument("-c", "--config", help="location of the configuration file")
 parser.add_argument(
@@ -98,7 +111,7 @@ if __name__ == "__main__":
     configfilePath = args.config or os.path.join(os.path.dirname(__file__), "miceco.cfg")
 
     if not os.path.exists(configfilePath):
-        print("No config File found!")
+        lg.err("No config File found!")
         sys.exit(1)
 
     # Load configuration
@@ -133,7 +146,11 @@ if __name__ == "__main__":
     max_note_length = client.get_max_note_length()
 
     # fetch custom emojis
+    start = dt.datetime.now()
     custom_emojis = client.get_custom_emojis()
+    end = dt.datetime.now()
+    lg.debug(f"Fetching custom emojis took : {format_delta_time(start, end)}")
+
 
     today              = dt.date.today()
     formerDate         = today - dt.timedelta(days=1)
@@ -153,16 +170,15 @@ if __name__ == "__main__":
     noteList, lastTimestamp, formerTimestamp = get_yesterday_notes(bis, lastTimestamp, formerTimestamp)
     end   = dt.datetime.now()
 
-    print(f"Fetching all notes took : {end-start}")
-
+    lg.debug(f"Fetching all notes took : {format_delta_time(start,end)}")
 
     if len(noteList) == 0:
-        print("Nothing to count, exiting script.")
+        lg.info("Nothing to count, exiting script.")
         sys.exit(1)
 
     if len(noteList) == 1 and note_is_miceco(noteList[0]):
-        print("Only note is MiCECo note.")
-        print("Nothing to count, exiting script")
+        lg.info("Only note is MiCECo note.")
+        lg.info("Nothing to count, exiting script")
         sys.exit(1)
 
     # processing
@@ -170,24 +186,25 @@ if __name__ == "__main__":
 
     start = dt.datetime.now()
 
-    for note in noteList:
-        if note["text"] is None:
-            print(f"Skipped Note {note['id'] } without Text\nTime noted: {note['createdAt']}")
+    for host in noteList:
+        if host["text"] is None:
+            lg.info(f"Skipped Note {host['id'] } without Text (Noted at: {host['createdAt']})")
+
             continue
 
-        if (note_is_miceco(note)):
+        if (note_is_miceco(host)):
             # Skip notes with three Zero-Width-Space in a
             # row (Marker to skip older MiCECo notes)
-            print(f"Skipped MiCECo Note {note['id'] }\nTime noted: {note['createdAt']}")
+            lg.info(f"Skipped MiCECo Note '{host['id'] }' (Noted at: {host['createdAt']})")
             continue
 
         # Concat all note fields into one for easier parsing
-        note_content = note["text"]
-        if note["cw"] is not None:
-            note_content = note["text"] + " " + note["cw"]
+        note_content = host["text"]
+        if host["cw"] is not None:
+            note_content = host["text"] + " " + host["cw"]
 
-        if "poll" in note:
-            for pollchoice in note["poll"]["choices"]: note_content += " " + pollchoice["text"]
+        if "poll" in host:
+            for pollchoice in host["poll"]["choices"]: note_content += " " + pollchoice["text"]
 
         # Process and count custom Emojis
         if custom_emojis is not None:
@@ -233,7 +250,8 @@ if __name__ == "__main__":
 
                     emoji_count[stringified_emoji] += emoji_occurences_in_note
     end = dt.datetime.now()
-    print(f"Counting emojis took : {end-start}")
+
+    lg.debug(f"Counting emojis took : {format_delta_time(start,end)}")
 
     doubleList = []
     hostList = []
@@ -242,7 +260,8 @@ if __name__ == "__main__":
     start = dt.datetime.now()
     emoji_count = {k: v for k, v in sorted(emoji_count.items(),reverse=True, key=lambda item: item[1])}
     end   = dt.datetime.now()
-    print(f"Sorting emojis took : {end-start}")
+
+    lg.debug(f"Sorting emojis took : {format_delta_time(start,end)}")
 
     reactionCount = 0
 
@@ -317,7 +336,8 @@ if __name__ == "__main__":
             reactText = "\n\nAnd didn't use any reactions."
 
         end   = dt.datetime.now()
-        print(f"Counting reactions took : {end-start}")
+
+        lg.debug(f"Counting reactions took : {format_delta_time(start,end)}")
     else:
         reactText = ""
 
@@ -327,12 +347,13 @@ if __name__ == "__main__":
     host_counter = Counter(hostList)
     deaf_ears = 0
     if getReaction_Received:
-        for note, count in host_counter.items():
+        start = dt.datetime.now()
+        for host, count in host_counter.items():
             try:
                 # print("Next query:")
                 # print(element)
                 # Get the URL from nodeinfo
-                nodeinfo_response = s.get(f"https://{note}/.well-known/nodeinfo")
+                nodeinfo_response = s.get(f"https://{host}/.well-known/nodeinfo")
 
                 nodeinfo_data = nodeinfo_response.json()
                 last_href = nodeinfo_data["links"][-1]["href"]
@@ -352,24 +373,26 @@ if __name__ == "__main__":
                         # Check reaction support for Others
 
                         mastodon_instance_info_response = s.get(
-                            f"https://{note}/api/v2/instance")
+                            f"https://{host}/api/v2/instance")
 
                         mastodon_instance_info_data = mastodon_instance_info_response.json()
                         if "reactions" not in mastodon_instance_info_data:
                             deaf_ears += count
 
             except Exception as e:
-                print(f"An error occurred: {e}")
-                print("If you see this error, please report it on github")
-                print(
-                    "This happens when a host is not providing an easy way to know if they support emoji reactions"
-                )
-                print("Host which couldn't be queried:" + note)
-                print(
-                    "miceco will assume that this instance supports emoji reactions since it's probably not mastodon"
-                )
+                if type(e) is requests.exceptions.ConnectionError:
+                    lg.warn(f"Unable count deaf ears for '{host}' as host is down")
+                    continue
+
+                lg.warn(f"An error occurred: {e}")
+                lg.warn("If you see this error, please report it on github")
+                lg.warn("This happens when a host is not providing an easy way to know if they support emoji reactions")
+                lg.warn("Host which couldn't be queried:" + host)
+                lg.warn("miceco will assume that this instance supports emoji reactions since it's probably not mastodon")
                 continue
 
+        end = dt.datetime.now()
+        lg.debug(f"Counting deaf ears took : {format_delta_time(start,end)}")
 
     initial_text = ""
     initial_react_text = ""
