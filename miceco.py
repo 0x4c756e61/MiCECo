@@ -26,14 +26,16 @@ known_working_software = [
     "villkey"
 ]
 
+default_reaction = "\u2764" # heart
+
 # Globals yay!
 reactList = []
 emojiList = []
 emojisTotal = 0
-doubleList = []
 ignored_emojis = []
 text = ""
 deafEarsText = ""
+reactText = ""
 getReactions = True
 getReaction_Received = False
 withReplies = True
@@ -211,25 +213,24 @@ if __name__ == "__main__":
 
     start = dt.datetime.now()
 
-    for host in noteList:
-        if host["text"] is None:
-            lg.info(f"Skipped Note {host['id'] } without Text (Noted at: {host['createdAt']})")
-
+    for note in noteList:
+        if note["text"] is None:
+            lg.info(f"Skipped Note {note['id'] } without Text (Noted at: {note['createdAt']})")
             continue
 
-        if (note_is_miceco(host)):
+        if (note_is_miceco(note)):
             # Skip notes with three Zero-Width-Space in a
             # row (Marker to skip older MiCECo notes)
-            lg.info(f"Skipped MiCECo Note '{host['id'] }' (Noted at: {host['createdAt']})")
+            lg.info(f"Skipped MiCECo Note '{note['id'] }' (Noted at: {note['createdAt']})")
             continue
 
         # Concat all note fields into one for easier parsing
-        note_content = host["text"]
-        if host["cw"] is not None:
-            note_content = host["text"] + " " + host["cw"]
+        note_content = note["text"]
+        if note["cw"] is not None:
+            note_content = note["text"] + " " + note["cw"]
 
-        if "poll" in host:
-            for pollchoice in host["poll"]["choices"]: note_content += " " + pollchoice["text"]
+        if "poll" in note:
+            for pollchoice in note["poll"]["choices"]: note_content += " " + pollchoice["text"]
 
         # Process and count custom Emojis
         if custom_emojis is not None:
@@ -279,8 +280,10 @@ if __name__ == "__main__":
 
     lg.debug(f"Counting emojis took : {format_delta_time(start,end)}")
 
-    doubleList = []
-    hostList = []
+    for key in emoji_count:
+        emojisTotal += emoji_count[key]
+
+
 
     # Sort it by the most used Emojis!
     start = dt.datetime.now()
@@ -290,66 +293,51 @@ if __name__ == "__main__":
     lg.debug(f"Sorting emojis took : {format_delta_time(start,end)}")
 
     reactionCount = 0
-
+    reaction_count = {}
+    hosts = []
     if getReactions:
-        start = dt.datetime.now()
         lastTimestamp = bis
 
-        reactionList, _, _ = get_yesterday_reactions(bis, lastTimestamp, formerTimestamp)
+        start = dt.datetime.now()
+        reactions, _, _ = get_yesterday_reactions(bis, lastTimestamp, formerTimestamp)
+        end = dt.datetime.now()
 
-        react = ""
-        host = ""
-        index = None
-        reactionElement: dict
+        lg.debug(f"Fetching yesterday's reactions took : {format_delta_time(start,end)}")
 
-        for reactionElement in reactionList:
-            # print(json.dumps(reactionElement))
-            # get note.user.host
-            # \u2764 is default (heart)
-            react = reactionElement["type"]
-            react = react.replace("@.", "")
-            host = reactionElement["note"]["user"]["host"]
+        start = dt.datetime.now()
+        for react in reactions:
+            stringified_reaction_emoji = react["type"].replace("@.", "")
+            host = react["note"]["user"]["host"]
 
-            if react != "\u2764" and host is not None:
-                hostList.append(host)
+            if stringified_reaction_emoji != default_reaction and host is not None:
+                hosts.append(host)
 
-            if react not in doubleList:
-                doubleList.append(react)
-                emojiDict = {"reaction": react, "count": 0}
-                reactList.append(emojiDict)
+            if stringified_reaction_emoji not in reaction_count:
+                reaction_count[stringified_reaction_emoji] = 0
 
-            index = doubleList.index(react)
-            reactList[index]["count"] += 1
-
-        doubleList = []
-        reactList = sorted(reactList, reverse=True, key=lambda d: d["count"])
-
-        if len(reactList) > 0:
-            for react in reactList:  # Summarize the number of Reactions used
-                reactionCount += react["count"]
-
-            initial_react_text = (
-                "\n\n\nAnd used " + str(reactionCount) + " reactions:\n\n" + chr(9553) + " "
-            )
-            reactText = initial_react_text
-
-            for reactionElement in reactList:
-                count = reactionElement["count"]
-                reaction = reactionElement["reaction"]
-                reactText += f"{count}x {reaction} " + chr(9553) + " "
-        else:
-            reactText = "\n\nAnd didn't use any reactions."
+            reaction_count[stringified_reaction_emoji] += 1
 
         end   = dt.datetime.now()
-
         lg.debug(f"Counting reactions took : {format_delta_time(start,end)}")
-    else:
-        reactText = ""
 
-    for key in emoji_count:
-        emojisTotal += emoji_count[key]
 
-    host_counter = Counter(hostList)
+        start = dt.datetime.now()
+        reaction_count = {k: v for k, v in sorted(reaction_count.items(),reverse=True, key=lambda item: item[1])}
+        end   = dt.datetime.now()
+        lg.debug(f"Sorting reactions took : {format_delta_time(start,end)}")
+
+        reactText = "\n\nAnd didn't use any reactions."
+        if len(reaction_count) > 0:
+            # Summarize the number of Reactions used
+            for stringified_reaction_emoji in reaction_count:
+                reactionCount += reaction_count[stringified_reaction_emoji]
+
+            reactText = (f"\n\n\nAnd used {reactionCount} reactions:\n\n{chr(9553)} ")
+
+            for stringified_reaction_emoji in reaction_count:
+                reactText += f"{reaction_count[stringified_reaction_emoji]}x {stringified_reaction_emoji} {chr(9553)} "
+
+    host_counter = Counter(hosts)
     deaf_ears = 0
     if getReaction_Received:
         start = dt.datetime.now()
@@ -464,6 +452,4 @@ if __name__ == "__main__":
         text = emoji_text + reactText
         text = emojilib.emojize(text)
 
-    print(text)
-    input("Debug....")
     client.post_note(text, cwtext, noteVisibility) #pyright:ignore
