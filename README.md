@@ -1,34 +1,32 @@
 # MiCECo
 **M**isskey **C**ustom **E**moji **Co**unter
 
-This fork includes changes that will allow miceco to run in Sharkey > v2023.12.0 and probably other Misskey forks.
-Please let me know if you (un)successfully ran MiCECo on something other than Sharkey!
+This fork builds on top of Vel's one, featuring a rewrite of the codebase, making the code easier to maintain, and much faster !
 
 ### Introduction
 This little script counts custom emojis and used reactions from the previous day and automaticaly creates a note on your Sharkey account with an overview. There is also an option to include reaction emojis in the counts too.
 
-All notes will be send with a content warning note, because some clients can't handle a big number of emojis!
+All notes will be sent with a content warning, because some clients can't handle a big number of emojis!
 
 ### Installation
 #### Docker
-Clone the repository into a folder of your choice with `git clone https://github.com/vel-schmusis/MiCECo.git`  
-Edit the file `example-miceco.cfg` (see table below) and save it as `miceco.cfg`  
-Edit the file `docker-compose.yaml` and change `TZ=Europe/Berlin` to your local timezone  
+Clone the repository into a folder of your choice with `git clone https://github.com/0x4c756e61/MiCECo.git`
+Edit the file `example-miceco.cfg` (see table below) and save it as `miceco.cfg`
+Edit the file `docker-compose.yaml` and change `TZ=Europe/Berlin` to your local timezone
 
 Start the container with `docker compose up --build`.
 
 #### Source
-Clone the repository into a folder of your choice with `git clone https://github.com/vel-schmusis/MiCECo.git`
+Clone the repository into a folder of your choice with `git clone https://github.com/0x4c756e61/MiCECo.git`
 Edit the file `example-miceco.cfg` (see table below) and save it as `miceco.cfg`
 
-Install following Python packages via `pip install`
-```
-emoji
-configparser
-requests
-```
+I advise you use virtual environments to avoid conflicting with your package manager or other project's dependencies, you can do as follows:
+1) In the cloned folder, run `python -m venv .venv`
+2) Activate the virtual environment `source .venv/bin/activate` (this command may change a little depending on the shell you use)
 
-or use `pip install -r requirements.txt` in the cloned folder
+Make sure you repeat step 2 at the start of every session
+
+Install the required dependencies via `pip install -r requirements.txt` in the cloned folder
 
 You are now ready to run the script with any Python3 version.
 
