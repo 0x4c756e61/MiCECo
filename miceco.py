@@ -2,11 +2,11 @@ import argparse
 import configparser
 import os
 import sys
-from collections import Counter
 import datetime as dt
 import emoji as emojilib
 import requests
 import math
+import threading
 
 import logger as lg
 from misskey_api import NoteVisibility, Misskey
@@ -28,19 +28,23 @@ known_working_software = [
 
 default_reaction = "\u2764" # heart
 
+miceco_signature = chr(8203) * 3
+
 # Globals yay!
 reactList = []
 emojiList = []
 emojisTotal = 0
 ignored_emojis = []
-text = ""
+text = miceco_signature # add the signature at the start of the post
 deafEarsText = ""
 reactText = ""
-getReactions = True
-getReaction_Received = False
-withReplies = True
-getUTF8_emojis = False
+cfgGetReactions = True
+cfgCountDeafEars = False
+cfgWithReplies = True
+cfgGetUTF8_emojis = False
 
+deaf_ears = 0
+deaf_ears_lock = threading.Lock()
 
 cwtext = "#miceco"
 user_agent = "MiCECo (github.com/vel_schmusis/MiCECo)"
@@ -71,7 +75,7 @@ def get_yesterday_notes(bis:int, lastTimestamp:int, formerTimestamp:int) -> tupl
             break
 
 
-        notes = client.get_notes(user_info, seit, lastTimestamp, withReplies)
+        notes = client.get_notes(user_info, seit, lastTimestamp, cfgWithReplies)
 
         noteList += notes
 
@@ -111,7 +115,6 @@ def get_yesterday_reactions(bis:int, lastTimestamp:int, formerTimestamp:int) -> 
         )
     return (reactionsList, lastTimestamp, formerTimestamp)
 
-
 def format_delta_time(start, end) -> str:
     process_time = (end-start).total_seconds();
     time_unit = "s"
@@ -122,6 +125,70 @@ def format_delta_time(start, end) -> str:
     process_time = round(process_time, 2)
 
     return f"{process_time} {time_unit}"
+
+def get_nodeinfo_url(host:str) -> str:
+    nodeinfo_response = s.get(f"https://{host}/.well-known/nodeinfo")
+
+    nodeinfo_data = nodeinfo_response.json()
+    last_href = nodeinfo_data["links"][-1]["href"]
+    return last_href
+
+def get_nodeinfo(host:str):
+    result_response = s.get(get_nodeinfo_url(host))
+    return result_response.json()
+
+# TODO: Rework this function
+def __count_deaf_ears_thread(host:str) -> None:
+    global deaf_ears
+    try:
+
+        # Get the instance informations
+        nodeinfo = get_nodeinfo(host)
+
+        # this is a leftover from the old code, I have no idea when is true
+        # none of sharkey, akkoma and mastodon has any key name reactions
+        # in their instance info
+        # Check if 'reactions' is supported
+        if "reactions" in nodeinfo: return
+
+        # Get software name
+        software_name = nodeinfo["software"]["name"]
+
+        # Check supported software
+        if software_name in known_working_software: return
+
+        # Check reaction support for Others
+        mastodon_instance_info_response = s.get(f"https://{host}/api/v2/instance")
+
+        mastodon_instance_info_data = mastodon_instance_info_response.json()
+        if "reactions" not in mastodon_instance_info_data:
+            deaf_ears_lock.acquire()
+            deaf_ears += hosts_count[host]
+            deaf_ears_lock.release()
+
+
+    except Exception as e:
+        if type(e) is requests.exceptions.ConnectionError:
+            lg.warn(f"Unable count deaf ears for '{host}' as host is down")
+            return
+
+        lg.warn(f"An error occurred: {e}")
+        lg.warn("If you see this error, please report it on github")
+        lg.warn("This happens when a host is not providing an easy way to know if they support emoji reactions")
+        lg.warn("Host which couldn't be queried:" + host)
+        lg.warn("miceco will assume that this instance supports emoji reactions since it's probably not mastodon")
+        return
+
+# TODO: Use a maximum of threads and a queue instead of spawning a thread for each hosts
+def count_deaf_ears():
+    threads:list[threading.Thread] = []
+    for host in hosts_count.keys():
+        t = threading.Thread(target=__count_deaf_ears_thread, args=(host,))
+        t.start()
+        threads.append(t)
+
+    for t in threads:
+        t.join()
 
 
 parser = argparse.ArgumentParser()
@@ -149,23 +216,29 @@ if __name__ == "__main__":
     token    = config.get("misskey", "token")
     user     = config.get("misskey", "user")
 
-    getReactions         = config.getboolean("misskey", "getReaction", fallback=True)
-    ignoreEmojis         = config.getboolean("misskey", "ignoreEmojis", fallback=False)
-    getReaction_Received = config.getboolean("misskey", "getReaction_Received", fallback=False)
-    withReplies          = config.getboolean("misskey", "withReplies", fallback=True)
-    getUTF8_emojis       = config.getboolean("misskey", "getUTF8_emojis", fallback=False)
-    noteVisibility       = config.get("misskey", "noteVisibility", fallback=NoteVisibility.ME)
+    cfgGetReactions         = config.getboolean("misskey", "getReaction", fallback=True)
+    cfgIgnoreEmojis         = config.getboolean("misskey", "ignoreEmojis", fallback=False)
+    cfgCountDeafEars        = config.getboolean("misskey", "getReaction_Received", fallback=False)
+    cfgWithReplies          = config.getboolean("misskey", "withReplies", fallback=True)
+    cfgGetUTF8_emojis       = config.getboolean("misskey", "getUTF8_emojis", fallback=False)
+    cfgNoteVisibility       = config.get("misskey", "noteVisibility", fallback=NoteVisibility.ME)
 
-    if (
-        noteVisibility     != NoteVisibility.PUBLIC
-        and noteVisibility != NoteVisibility.HOME
-        and noteVisibility != NoteVisibility.FOLLOWERS
-        and noteVisibility != NoteVisibility.ME
-    ):
-        noteVisibility = NoteVisibility.ME
+
+    match cfgNoteVisibility:
+        case NoteVisibility.PUBLIC:
+            pass
+        case NoteVisibility.HOME:
+            pass
+        case NoteVisibility.FOLLOWERS:
+            pass
+        case NoteVisibility.ME:
+            pass
+        case _:
+            cfgNoteVisibility = NoteVisibility.ME
+
 
     # load ignored emojis
-    if ignoreEmojis: load_ignored_emojis()
+    if cfgIgnoreEmojis: load_ignored_emojis()
 
     # Create API client
     client          = Misskey(token, instance, user)
@@ -239,7 +312,7 @@ if __name__ == "__main__":
                 if "@" in emoji["name"]: continue
                 stringified_emoji = f":{emoji['name']}:"
 
-                if ignoreEmojis and stringified_emoji in ignored_emojis:continue
+                if cfgIgnoreEmojis and stringified_emoji in ignored_emojis:continue
 
                 emoji_occurences_in_note = note_content.count(stringified_emoji)
                 if emoji_occurences_in_note <=0:
@@ -254,14 +327,14 @@ if __name__ == "__main__":
 
         # Process UTF8 Emojis
         # Find all UTF8 Emojis in Text and CW text
-        if getUTF8_emojis:
+        if cfgGetUTF8_emojis:
 
             emojis_in_note = emojilib.distinct_emoji_list(note_content)
             note_content = emojilib.demojize(note_content)
 
             if len(emojis_in_note) > 0:
                 for emoji in emojis_in_note:
-                    if ignoreEmojis and emoji in ignored_emojis:continue
+                    if cfgIgnoreEmojis and emoji in ignored_emojis:continue
 
                     stringified_emoji = emojilib.demojize(emoji)
 
@@ -284,7 +357,6 @@ if __name__ == "__main__":
         emojisTotal += emoji_count[key]
 
 
-
     # Sort it by the most used Emojis!
     start = dt.datetime.now()
     emoji_count = {k: v for k, v in sorted(emoji_count.items(),reverse=True, key=lambda item: item[1])}
@@ -292,10 +364,28 @@ if __name__ == "__main__":
 
     lg.debug(f"Sorting emojis took : {format_delta_time(start,end)}")
 
-    reactionCount = 0
+    initial_text = f"{user_info.display_name} has written {len(noteList)} Notes yesterday ({formerDate.strftime("%a %d-%m-%Y")}) and "
+    emoji_text = ""
+    if emojisTotal > 0:
+        initial_text += f"used a total of {emojisTotal} Emojis.\n\n║ "
+
+        for emoji in emoji_count:
+            emoji_text += f"{emoji_count[emoji]}x {emoji} ║ "
+
+    else:
+        initial_text += "and didn't use any emojis.\n\n"
+
+    text += initial_text
+    text += emoji_text
+
+    initial_text = ""
+    emoji_text = ""
+
+    total_reaction_count = 0
     reaction_count = {}
-    hosts = []
-    if getReactions:
+    hosts_count = {}
+
+    if cfgGetReactions:
         lastTimestamp = bis
 
         start = dt.datetime.now()
@@ -310,7 +400,9 @@ if __name__ == "__main__":
             host = react["note"]["user"]["host"]
 
             if stringified_reaction_emoji != default_reaction and host is not None:
-                hosts.append(host)
+                if host not in hosts_count:
+                    hosts_count[host] = 0
+                hosts_count[host] += 1
 
             if stringified_reaction_emoji not in reaction_count:
                 reaction_count[stringified_reaction_emoji] = 0
@@ -330,126 +422,54 @@ if __name__ == "__main__":
         if len(reaction_count) > 0:
             # Summarize the number of Reactions used
             for stringified_reaction_emoji in reaction_count:
-                reactionCount += reaction_count[stringified_reaction_emoji]
+                total_reaction_count += reaction_count[stringified_reaction_emoji]
 
-            reactText = (f"\n\n\nAnd used {reactionCount} reactions:\n\n{chr(9553)} ")
+            reactText = (f"\n\n\nAnd used {total_reaction_count} reactions:\n\n{chr(9553)} ")
 
             for stringified_reaction_emoji in reaction_count:
                 reactText += f"{reaction_count[stringified_reaction_emoji]}x {stringified_reaction_emoji} {chr(9553)} "
 
-    host_counter = Counter(hosts)
-    deaf_ears = 0
-    if getReaction_Received:
+        text += reactText
+
+    if cfgCountDeafEars:
         start = dt.datetime.now()
-        for host, count in host_counter.items():
-            try:
-                # print("Next query:")
-                # print(element)
-                # Get the URL from nodeinfo
-                nodeinfo_response = s.get(f"https://{host}/.well-known/nodeinfo")
 
-                nodeinfo_data = nodeinfo_response.json()
-                last_href = nodeinfo_data["links"][-1]["href"]
-
-                # Execute GET request using the URL from nodeinfo
-                result_response = s.get(last_href)
-                result_data = result_response.json()
-
-                # Check if 'reactions' is supported
-                if "reactions" not in result_data:
-                    # Get software name
-                    software_name = result_data["software"]["name"]
-                    # print(f"Software name: {software_name}")
-
-                    # Check supported software
-                    if software_name not in known_working_software:
-                        # Check reaction support for Others
-
-                        mastodon_instance_info_response = s.get(
-                            f"https://{host}/api/v2/instance")
-
-                        mastodon_instance_info_data = mastodon_instance_info_response.json()
-                        if "reactions" not in mastodon_instance_info_data:
-                            deaf_ears += count
-
-            except Exception as e:
-                if type(e) is requests.exceptions.ConnectionError:
-                    lg.warn(f"Unable count deaf ears for '{host}' as host is down")
-                    continue
-
-                lg.warn(f"An error occurred: {e}")
-                lg.warn("If you see this error, please report it on github")
-                lg.warn("This happens when a host is not providing an easy way to know if they support emoji reactions")
-                lg.warn("Host which couldn't be queried:" + host)
-                lg.warn("miceco will assume that this instance supports emoji reactions since it's probably not mastodon")
-                continue
+        count_deaf_ears()
 
         end = dt.datetime.now()
         lg.debug(f"Counting deaf ears took : {format_delta_time(start,end)}")
 
-    initial_text = ""
-    initial_react_text = ""
-
-    if emojisTotal > 0:
-        initial_text = (
-            user_info.display_name
-            + " has written "
-            + str(len(noteList))
-            + " Notes yesterday, "
-            + formerDate.strftime("%a %d-%m-%Y")
-            + "\nand used a total of "
-            + str(emojisTotal)
-            + " Emojis."
-            + chr(8203)
-            + chr(8203)
-            + chr(8203)
-            + "\n\n"
-            + chr(9553)
-            + " "
-        )
-        initial_text = f"{user_info.display_name} has written {len(noteList)} Notes yesterday ({formerDate.strftime("%a %d-%m-%Y")}) and used a total of {emojisTotal} Emojis."
-        # signature to identify miceco posts
-        initial_text += chr(8203) + chr(8203) + chr(8203) + "\n\n"+ chr(9553)+ " "
-
-        text = initial_text
-        emoji_text = ""
-
-        for emoji in emoji_count:
-            emoji_text += f"{emoji_count[emoji]}x {emoji} " + chr(9553) + " "
-
-    else:
-
-        emoji_text = f"{user_info.display_name} has written {len(noteList)} Notes yesterday ({formerDate.strftime("%a %d-%m-%Y")})\nand didn't use any emojis."
-        emoji_text += chr(8203) + chr(8203) + chr(8203)
-
-    if getReaction_Received:
         if deaf_ears > 0:
-            deafEarsText = f"\n\nOf the {reactionCount} reactions {user_info.display_name} sent, at least {deaf_ears} went into the void (to Mastodon users) :("
-
+            deafEarsText = f"\n\nOf the {total_reaction_count} reactions {user_info.display_name} sent, at least {deaf_ears} went into the void (to Mastodon users) :("
         else:
             deafEarsText = "\n\nLooks like all reactions actually got received!"
 
-    text += emoji_text + reactText + deafEarsText
+        text += deafEarsText
+
+    # initial_text = ""
+    # initial_react_text = ""
+
+    # text += emoji_text + reactText + deafEarsText
     text = emojilib.emojize(text)
-    # print(text)
 
     max_note_length = max_note_length - len(cwtext)
 
     if max_note_length < len(text):
         emoji_text = initial_text
         for emoji in list(emoji_count.keys())[0:5]:
-            emoji_text += f"{emoji_count}x {emoji} " + chr(9553) + " "
+            emoji_text += f"{emoji_count}x {emoji} ║ "
         emoji_text += " and more..."
 
-        if getReactions:
-            reactText = initial_react_text
+        if cfgGetReactions:
             for item in range(0, 5):
                 count = reactList[item]["count"]
                 reaction = reactList[item]["reaction"]
-                reactText += f"{count}x {reaction} " + chr(9553) + " "
+                reactText += f"{count}x {reaction} ║ "
             reactText += " and more..."
 
         text = emoji_text + reactText
         text = emojilib.emojize(text)
 
-    client.post_note(text, cwtext, noteVisibility) #pyright:ignore
+    print(text)
+    input("Waiting...")
+    client.post_note(text, cwtext, cfgNoteVisibility) #pyright:ignore
