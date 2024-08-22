@@ -470,6 +470,4 @@ if __name__ == "__main__":
         text = emoji_text + reactText
         text = emojilib.emojize(text)
 
-    print(text)
-    input("Waiting...")
     client.post_note(text, cwtext, cfgNoteVisibility) #pyright:ignore
